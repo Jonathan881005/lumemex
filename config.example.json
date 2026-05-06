@@ -1,0 +1,8 @@
+{
+  "api_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+  "api_key": "YOUR_API_KEY_HERE",
+  "model": "gemini-2.0-flash",
+  "raw_dir": "./raw",
+  "wiki_dir": "./wiki",
+  "max_tokens_per_compilation": 8000
+}

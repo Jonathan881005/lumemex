@@ -1,0 +1,22 @@
+{
+  "name": "lumemex",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal knowledge base system using the LLM Wiki pattern.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "dev:web": "pnpm --filter @lumemex/web dev",
+    "dev:cli": "pnpm --filter @lumemex/cli dev"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

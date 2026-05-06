@@ -1,0 +1,19 @@
+{
+  "name": "@lumemex/cli",
+  "version": "0.1.0",
+  "bin": {
+    "lumemex": "dist/bin.js"
+  },
+  "main": "dist/bin.js",
+  "types": "dist/bin.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo \"no lint yet\"",
+    "test": "echo \"no tests yet\"",
+    "dev": "ts-node src/bin.ts"
+  },
+  "dependencies": {
+    "@lumemex/core": "0.1.0",
+    "@lumemex/shared": "0.1.0"
+  }
+}
