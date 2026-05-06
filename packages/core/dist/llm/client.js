@@ -21,6 +21,9 @@ function createOpenAICompatibleClient(config) {
         baseURL: config.api_base_url,
     });
 }
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 async function completeJson(params) {
     const { config, operation, systemPrompt, userPrompt, maxTokens } = params;
     const client = createOpenAICompatibleClient(config);
@@ -32,15 +35,29 @@ async function completeJson(params) {
     const primaryModel = params.model ?? opModel ?? config.model;
     const fallbackModel = config.model;
     const runWithModel = async (model) => {
-        return client.chat.completions.create({
-            model,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.2,
-            max_tokens: maxTokens,
-        });
+        const retryDelaysMs = [2000, 4000, 8000];
+        for (let attempt = 0;; attempt++) {
+            try {
+                return await client.chat.completions.create({
+                    model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt },
+                    ],
+                    temperature: 0.2,
+                    max_tokens: maxTokens,
+                });
+            }
+            catch (e) {
+                const status = Number(e?.status ?? 0);
+                const canRetry = status === 500 && attempt < retryDelaysMs.length;
+                if (!canRetry)
+                    throw e;
+                const waitMs = retryDelaysMs[attempt];
+                console.warn(`[retry ${attempt + 1}/3] 500 error, retrying in ${Math.round(waitMs / 1000)}s...`);
+                await sleep(waitMs);
+            }
+        }
     };
     let resp;
     try {

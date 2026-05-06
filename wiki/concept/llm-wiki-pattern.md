@@ -7,7 +7,7 @@ The **LLM Wiki Pattern** is a methodology for knowledge management where an LLM 
 The pattern separates data into two distinct layers to ensure provenance and flexibility:
 
 - **Raw Layer (`raw/`)**: A human-curated repository of immutable source documents. Once a document is ingested, its semantic content remains unchanged to preserve the original context.
-- **Wiki Layer (`wiki/`)**: An LLM-owned layer containing summaries, abstract concepts, comparisons, and syntheses. This layer is designed to be refactored and evolved.
+- **Wiki Layer (`wiki/`)**: An LLM-owned layer containing summaries, abstract concepts, comparisons, and syntheses. This layer is designed to be refactored and evolved. This layer is essentially a [[Persistent Wiki]], serving as the stateful memory of the system.
 
 ### Navigation and Governance
 - **`index.md`**: Serves as the primary navigation layer and content catalog.
@@ -30,7 +30,12 @@ The lifecycle of knowledge in this pattern follows a continuous loop:
 | **Evolution** | Static index | Evolving knowledge graph |
 | **Provenance** | Direct snippet citation | Traceable from wiki $\rightarrow$ raw |
 
+For a detailed analysis of these trade-offs and operational recommendations, see [[RAG vs Persistent Wiki]].
+
 This approach transforms the LLM from a simple retriever into a [[Knowledge Management]] curator, creating a [[Persistent Wiki]] that compounds in value as more information is ingested.
 
 Edited via /editor PATCH test.
 Editor save test line.
+
+## Sources
+- `raw/url/llm-wiki-pattern-demo.md`

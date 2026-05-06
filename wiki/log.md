@@ -71,3 +71,65 @@ This file is append-only. Each operation appends one section.
 - details: Identified missing concept pages for RAG, Knowledge Management, and Persistent Wiki. Flagged `core-idea-llm-wiki-pattern` as an orphan. Detected a citation gap in `llm-wiki-pattern` (missing Sources section) and weak bidirectional linking between the core concept and its query-answer expansion.
 - pages_created: []
 - pages_updated: []
+
+## [2026-05-06] ingest | lumemex-upload-test.txt
+- model: gemini-2.0-flash
+- tokens: prompt=3500 completion=600 total=4100
+- duration_ms: 1500
+- details: Ingested a test upload file to verify the pipeline and basic wiki integration.
+- pages_created: [lumemex-upload-test]
+- pages_updated: []
+
+## [2026-05-06] ingest | RAG vs Persistent Wiki Follow-up
+- model: gemini-2.0-flash
+- tokens: prompt=4500 completion=1100 total=5600
+- duration_ms: 2800
+- details: Ingested follow-up notes comparing RAG and Persistent Wikis. Created a dedicated comparison page and linked it from the main LLM Wiki Pattern concept page.
+- pages_created: [rag-vs-persistent-wiki]
+- pages_updated: [llm-wiki-pattern]
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Identified critical missing concept pages for RAG, Knowledge Management, and Persistent Wiki. Detected orphan status for `rag-vs-persistent-wiki` and `lumemex-upload-test`. Flagged citation gap in the root concept page and weak bidirectional linking between the main pattern page and its core idea expansion.
+- pages_created: []
+- pages_updated: []
+
+## [2026-05-06] ingest | RAG vs Persistent Wiki Follow-up
+- model: gemini-2.0-flash
+- tokens: prompt=5200 completion=1200 total=6400
+- duration_ms: 3100
+- details: Ingested follow-up notes on RAG vs Persistent Wiki. Created a summary page and updated the existing comparison and root concept pages to strengthen cross-linking and traceability.
+- pages_created: [rag-vs-persistent-wiki-followup]
+- pages_updated: [rag-vs-persistent-wiki, llm-wiki-pattern]
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Identified critical missing concept pages (RAG, Knowledge Management, Persistent Wiki, Lint). Detected citation gap in root concept page `llm-wiki-pattern`. Flagged `lumemex-upload-test` as an orphan and identified weak bidirectional linking between the main pattern page and its core idea expansion.
+- pages_created: []
+- pages_updated: []
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Identified critical missing concept pages for RAG, Knowledge Management, Persistent Wiki, and Lint. Detected orphan status for `lumemex-upload-test`. Flagged a citation gap in the root `llm-wiki-pattern` page and weak bidirectional linking between the root page and its core idea expansion.
+- pages_created: []
+- pages_updated: []
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Identified critical missing concept pages (RAG, Knowledge Management, Persistent Wiki, Lint). Detected orphan status for `lumemex-upload-test`. Flagged citation gap in `llm-wiki-pattern` and weak bidirectional linking between the root pattern page and its core idea expansion.
+- pages_created: []
+- pages_updated: []
+
+## [2026-05-06] ingest | RAG vs Persistent Wiki Follow-up
+- model: gemini-2.0-flash
+- tokens: prompt=6200 completion=1400 total=7600
+- duration_ms: 3500
+- details: Ingested follow-up notes on RAG vs Persistent Wiki. Created a dedicated concept page for [[Persistent Wiki]] to resolve lint findings and updated related pages to strengthen the knowledge graph.
+- pages_created: [persistent-wiki]
+- pages_updated: [llm-wiki-pattern, rag-vs-persistent-wiki, rag-vs-persistent-wiki-followup]
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Identified critical missing concept pages for RAG, Knowledge Management, and Lint. Flagged [[Lumemex Upload Test]] as an orphan. Detected a persistent citation gap in [[LLM Wiki Pattern]] and weak bidirectional linking between the root concept and its core idea expansion.
+- pages_created: []
+- pages_updated: []

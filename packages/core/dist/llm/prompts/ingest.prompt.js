@@ -14,6 +14,7 @@ For this ingest operation:
 - You will be given:
   - the new raw source document (with YAML frontmatter)
   - the tail context of wiki/log.md
+  - an existing wiki page catalog (slug + title + category)
   - a small set of related wiki pages (may be empty)
 
 Produce exactly ONE JSON object as output.
@@ -26,6 +27,9 @@ Hard constraint:
 Quality requirements:
 - Create a reusable wiki page that summarizes and/or abstracts the raw source into concepts.
 - Add meaningful [[wiki-links]] to connect to existing pages.
+- If the new source overlaps with existing concepts, you MUST update at least 1 existing wiki page and add a concrete "what changed" paragraph to that page.
+- Every created or updated page MUST contain a "## Sources" section.
+- Every created or updated page MUST satisfy bidirectional linking with related pages (A links to B and B links back to A where relevant).
 - Avoid copying large verbatim raw text.
 - Be explicit about uncertainties and open questions.
 - The generated markdown MUST be valid and consistent with the wiki style.
@@ -39,6 +43,9 @@ wiki/index.md:
 
 wiki/log.md tail (last ~10 entries):
 {{LOG_TAIL}}
+
+Existing wiki page catalog (slug + title + category):
+{{EXISTING_WIKI_PAGES_JSON}}
 
 Related wiki pages (top-k by relevance; may be empty):
 {{RELATED_PAGES_JSON}}
@@ -59,8 +66,11 @@ Return JSON object in this exact shape:
   "secondary_updates": [
     {
       "slug": "string",
+      "title": "string",
+      "category": "entity|concept|summary|comparison|synthesis|query-answer|meta",
       "reason": "string",
-      "patch_markdown": "string"
+      "markdown": "string",
+      "added_paragraph_summary": "string"
     }
   ],
   "index_entry": {
@@ -79,6 +89,8 @@ Return JSON object in this exact shape:
 Notes:
 - "log_entry" MUST be a markdown section suitable to append to wiki/log.md and start with: "## [YYYY-MM-DD] ingest | <title>".
 - "primary_page.markdown" MUST use [[wiki-links]] for related wiki pages.
+- If there is meaningful overlap with existing concepts, "secondary_updates" MUST include at least one existing page update.
+- "added_paragraph_summary" must describe the actual new paragraph added for each updated page.
 - Use at least 3 [[wiki-links]] whenever possible.
 `;
 //# sourceMappingURL=ingest.prompt.js.map

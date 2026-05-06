@@ -37,7 +37,8 @@ function fillTemplate(template, vars) {
     }
     return out;
 }
-async function ingestOneRawPath(rawPathRelativeToRepo) {
+async function ingestOneRawPath(rawPathRelativeToRepo, options) {
+    const force = Boolean(options?.force);
     const config = await (0, load_config_1.loadConfig)();
     const db = (0, db_1.initDb)();
     const wikiDir = config.wiki_dir;
@@ -62,7 +63,7 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
     const existing = db
         .prepare('SELECT id, status, content_hash FROM raw_items WHERE raw_path = ?')
         .get(rawPathNormalized);
-    if (existing && existing.status === 'processed' && existing.content_hash === contentHash) {
+    if (!force && existing && existing.status === 'processed' && existing.content_hash === contentHash) {
         return {
             rawItemId: existing.id,
             jobId: '',
@@ -106,6 +107,8 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
     const relatedPages = db
         .prepare('SELECT slug, title, path, category, content FROM wiki_pages ORDER BY updated_at DESC LIMIT 6')
         .all();
+    const allWikiContentRows = db.prepare('SELECT title, content FROM wiki_pages').all();
+    const preExistingWikiText = allWikiContentRows.map((r) => `${r.title}\n${r.content ?? ''}`).join('\n\n');
     const relatedPagesJson = JSON.stringify(relatedPages.map((p) => ({
         slug: p.slug,
         title: p.title,
@@ -113,10 +116,16 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
         category: p.category,
         content: truncateForPrompt(p.content ?? '', 12000),
     })));
+    const existingWikiPagesJson = JSON.stringify(index.entries.map((e) => ({
+        slug: e.slug,
+        title: e.title,
+        category: e.category,
+    })));
     const userPrompt = fillTemplate(ingest_prompt_1.ingestUserPromptTemplate, {
         SCHEMA_MD: schemaMd,
         INDEX_MD: await promises_1.default.readFile(node_path_1.default.join(wikiDir, 'index.md'), 'utf8'),
         LOG_TAIL: logTail,
+        EXISTING_WIKI_PAGES_JSON: existingWikiPagesJson,
         RELATED_PAGES_JSON: relatedPagesJson,
         RAW_ITEM_JSON: rawItemJson,
         MAX_TOKENS: String(config.max_tokens_per_compilation ?? 8000),
@@ -141,32 +150,24 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
     const primary = modelOutput?.primary_page;
     const indexEntry = modelOutput?.index_entry;
     const logEntry = modelOutput?.log_entry;
+    const secondaryUpdates = Array.isArray(modelOutput?.secondary_updates) ? modelOutput.secondary_updates : [];
     if (!primary || !primary.slug || !primary.title || !primary.category || !primary.markdown || !indexEntry || !logEntry) {
         db.prepare('UPDATE jobs SET status = ?, error = ?, finished_at = ? WHERE id = ?').run('failed', 'LLM output missing required fields for ingest.', new Date().toISOString(), jobId);
         throw new Error('LLM ingest output missing required fields.');
     }
     const touchedWikiSlugs = [];
-    // Write primary page
+    const pagesCreated = [];
+    const pagesUpdated = [];
+    const pageMarkdownBySlug = new Map();
+    // Write primary page first.
     const primaryCategory = primary.category;
-    const primaryMarkdown = primary.markdown;
-    const primarySlug = primary.slug;
-    const primaryTitle = primary.title;
-    await (0, write_1.writeWikiPageFile)({
-        wikiDir,
-        category: primaryCategory,
-        slug: primarySlug,
-        markdown: primaryMarkdown,
-    });
-    const outLinkTitles = (0, shared_1.extractWikiLinks)(primaryMarkdown).map((t) => t.trim());
-    const { resolvedSlugs } = (0, links_1.resolveWikiLinkTitlesToSlugs)({
-        linkTitles: outLinkTitles,
-        byTitle: index.byTitle,
-        bySlug: index.bySlug,
-    });
+    const primaryMarkdown = String(primary.markdown);
+    const primarySlug = String(primary.slug);
+    const primaryTitle = String(primary.title);
     const nowIso = new Date().toISOString();
     const updatedAt = (String(indexEntry.updated_at ?? indexEntry.updatedAt ?? '').trim() ||
         new Date().toISOString().slice(0, 10));
-    // Update wiki/index.md (fixed-field index)
+    // Update wiki/index.md (fixed-field index) for primary.
     const entryForIndex = {
         slug: String(indexEntry.slug ?? primarySlug),
         category: primaryCategory,
@@ -175,22 +176,83 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
         updatedAt: String(indexEntry.updated_at ?? indexEntry.updatedAt ?? updatedAt).slice(0, 10),
         tags: Array.isArray(indexEntry.tags) ? indexEntry.tags : undefined,
     };
-    await (0, index_update_1.writeUpdatedIndexFile)({ wikiDir, entry: entryForIndex });
-    await (0, write_1.appendWikiLog)({ wikiDir, logEntryMarkdown: logEntry });
-    // Persist to DB
-    const outLinksInsert = resolvedSlugs.filter(Boolean);
-    const wikiPageId = uuid();
-    db.prepare('INSERT INTO wiki_pages (id, slug, title, path, category, summary_line, content_hash, created_at, updated_at, generated_by, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(wikiPageId, primarySlug, primaryTitle, (0, paths_1.wikiPagePath)(wikiDir, primaryCategory, primarySlug).replaceAll('\\', '/'), primaryCategory, String(entryForIndex.summary ?? ''), (0, hash_1.sha256Hex)(primaryMarkdown), nowIso, nowIso, 'ingest', primaryMarkdown);
-    // wiki_links
-    for (const toSlug of outLinksInsert) {
-        db.prepare('INSERT OR IGNORE INTO wiki_links (from_slug, to_slug, created_at) VALUES (?, ?, ?)').run(primarySlug, toSlug, nowIso);
+    await upsertWikiPageAndIndex({
+        db,
+        wikiDir,
+        slug: primarySlug,
+        title: primaryTitle,
+        category: primaryCategory,
+        markdown: primaryMarkdown,
+        summary: String(entryForIndex.summary ?? ''),
+        tags: entryForIndex.tags,
+        nowIso,
+        onCreated: (slug) => pagesCreated.push(slug),
+        onUpdated: (slug) => pagesUpdated.push(slug),
+    });
+    pageMarkdownBySlug.set(primarySlug, primaryMarkdown);
+    touchedWikiSlugs.push(primarySlug);
+    // Apply secondary updates returned by the model.
+    for (const u of secondaryUpdates) {
+        const slug = String(u?.slug ?? '').trim();
+        const markdown = String(u?.markdown ?? u?.patch_markdown ?? '').trim();
+        if (!slug || !markdown)
+            continue;
+        const existingPage = db
+            .prepare('SELECT title, category FROM wiki_pages WHERE slug = ?')
+            .get(slug);
+        const titleForUpdate = String(u?.title ?? existingPage?.title ?? slug).trim();
+        const categoryForUpdate = String(u?.category ?? existingPage?.category ?? 'concept');
+        await upsertWikiPageAndIndex({
+            db,
+            wikiDir,
+            slug,
+            title: titleForUpdate,
+            category: categoryForUpdate,
+            markdown,
+            summary: String(u?.added_paragraph_summary ?? u?.reason ?? ''),
+            tags: undefined,
+            nowIso,
+            onCreated: (createdSlug) => pagesCreated.push(createdSlug),
+            onUpdated: (updatedSlug) => pagesUpdated.push(updatedSlug),
+        });
+        pageMarkdownBySlug.set(slug, markdown);
+        touchedWikiSlugs.push(slug);
     }
-    // raw -> wiki refs
-    db.prepare('INSERT OR IGNORE INTO raw_to_wiki_refs (raw_id, wiki_slug) VALUES (?, ?)').run(rawItemId, primarySlug);
+    await (0, write_1.appendWikiLog)({ wikiDir, logEntryMarkdown: logEntry });
+    // Re-read index after all page writes so link title -> slug resolution includes new pages.
+    const freshIndex = await (0, index_md_1.readWikiIndex)(wikiDir);
+    let crossRefAdded = 0;
+    for (const slug of new Set(touchedWikiSlugs)) {
+        const markdown = pageMarkdownBySlug.get(slug) ?? '';
+        const outLinkTitles = (0, shared_1.extractWikiLinks)(markdown).map((t) => t.trim());
+        const { resolvedSlugs } = (0, links_1.resolveWikiLinkTitlesToSlugs)({
+            linkTitles: outLinkTitles,
+            byTitle: freshIndex.byTitle,
+            bySlug: freshIndex.bySlug,
+        });
+        db.prepare('DELETE FROM wiki_links WHERE from_slug = ?').run(slug);
+        for (const toSlug of resolvedSlugs.filter(Boolean)) {
+            if (toSlug === slug)
+                continue;
+            db.prepare('INSERT OR IGNORE INTO wiki_links (from_slug, to_slug, created_at) VALUES (?, ?, ?)').run(slug, toSlug, nowIso);
+            crossRefAdded += 1;
+        }
+    }
+    // raw -> wiki refs for all touched pages.
+    for (const slug of new Set(touchedWikiSlugs)) {
+        db.prepare('INSERT OR IGNORE INTO raw_to_wiki_refs (raw_id, wiki_slug) VALUES (?, ?)').run(rawItemId, slug);
+    }
+    const warnings = validateIngestResult({
+        rawBody: body,
+        preExistingWikiText,
+        pagesUpdated,
+        pagesCreated,
+        pageMarkdownBySlug,
+        db,
+    });
     db.prepare('UPDATE raw_items SET status = ?, last_error = ? WHERE id = ?').run('processed', null, rawItemId);
     db.prepare('UPDATE jobs SET status = ?, finished_at = ? WHERE id = ?').run('success', new Date().toISOString(), jobId);
-    db.prepare('INSERT INTO job_events (job_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)').run(jobId, 'job_finished', JSON.stringify({ pagesCreated: [primarySlug] }), new Date().toISOString());
-    touchedWikiSlugs.push(primarySlug);
+    db.prepare('INSERT INTO job_events (job_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)').run(jobId, 'job_finished', JSON.stringify({ pagesCreated, pagesUpdated, warnings }), new Date().toISOString());
     const durationMs = Date.now() - started;
     return {
         rawItemId,
@@ -198,20 +260,108 @@ async function ingestOneRawPath(rawPathRelativeToRepo) {
         status: 'success',
         primarySummaryPageSlug: primarySlug,
         touchedWikiSlugs,
-        crossRefAdded: 1,
+        crossRefAdded,
         compilation: {
             operation: 'ingest',
             jobId,
             model: config.model,
             providerBaseUrl: config.api_base_url,
-            pagesCreated: [primarySlug],
-            pagesUpdated: [],
+            pagesCreated: [...new Set(pagesCreated)],
+            pagesUpdated: [...new Set(pagesUpdated)],
             indexUpdated: true,
             logAppended: true,
-            warnings: [],
+            warnings,
             durationMs,
         },
     };
+}
+async function upsertWikiPageAndIndex(params) {
+    const { db, wikiDir, slug, title, category, markdown, summary, tags, nowIso, onCreated, onUpdated } = params;
+    const existing = db.prepare('SELECT id FROM wiki_pages WHERE slug = ?').get(slug);
+    await (0, write_1.writeWikiPageFile)({ wikiDir, category, slug, markdown });
+    await (0, index_update_1.writeUpdatedIndexFile)({
+        wikiDir,
+        entry: {
+            slug,
+            category,
+            title,
+            summary,
+            updatedAt: nowIso.slice(0, 10),
+            tags,
+        },
+    });
+    if (existing) {
+        db.prepare('UPDATE wiki_pages SET title = ?, path = ?, category = ?, summary_line = ?, content_hash = ?, updated_at = ?, generated_by = ?, content = ? WHERE slug = ?').run(title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(markdown), nowIso, 'ingest', markdown, slug);
+        onUpdated(slug);
+        return;
+    }
+    db.prepare('INSERT INTO wiki_pages (id, slug, title, path, category, summary_line, content_hash, created_at, updated_at, generated_by, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(uuid(), slug, title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(markdown), nowIso, nowIso, 'ingest', markdown);
+    onCreated(slug);
+}
+function validateIngestResult(params) {
+    const { rawBody, preExistingWikiText, pagesUpdated, pagesCreated, pageMarkdownBySlug, db } = params;
+    const warnings = [];
+    const rawKeywords = keywordSet(rawBody);
+    const wikiKeywords = keywordSet(preExistingWikiText);
+    let overlapCount = 0;
+    for (const k of rawKeywords) {
+        if (wikiKeywords.has(k))
+            overlapCount += 1;
+    }
+    if (pagesUpdated.length === 0 && overlapCount > 2) {
+        warnings.push('[warn] No existing pages updated despite content overlap');
+    }
+    for (const [slug, markdown] of pageMarkdownBySlug.entries()) {
+        if (!/\n##\s+Sources\s*$/m.test(`\n${markdown}`)) {
+            warnings.push(`[warn] Missing ## Sources: ${slug}`);
+        }
+    }
+    for (const slug of pagesCreated) {
+        const inbound = db
+            .prepare('SELECT COUNT(*) AS c FROM wiki_links WHERE to_slug = ? AND from_slug <> ?')
+            .get(slug, slug);
+        if (Number(inbound.c ?? 0) === 0) {
+            warnings.push(`[warn] Orphan page: ${slug}`);
+        }
+    }
+    for (const w of warnings) {
+        console.warn(w);
+    }
+    return warnings;
+}
+function keywordSet(text) {
+    const STOP_WORDS = new Set([
+        'the',
+        'and',
+        'for',
+        'with',
+        'that',
+        'this',
+        'from',
+        'into',
+        'wiki',
+        'page',
+        'pages',
+        'llm',
+        'raw',
+        'ingest',
+        'query',
+        'lint',
+        'using',
+        'about',
+        'over',
+        'than',
+        'are',
+        'was',
+        'were',
+        'have',
+        'has',
+        'will',
+        'your',
+        'their',
+    ]);
+    const tokens = (text.toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? []).filter((t) => !STOP_WORDS.has(t));
+    return new Set(tokens);
 }
 function inferSourceTypeFromRawPath(rawPath) {
     const p = rawPath.toLowerCase();

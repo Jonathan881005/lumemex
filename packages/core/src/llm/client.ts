@@ -19,6 +19,10 @@ export function createOpenAICompatibleClient(config: LumemexConfig): OpenAI {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function completeJson(params: {
   config: LumemexConfig;
   operation: 'ingest' | 'query' | 'lint';
@@ -40,15 +44,29 @@ export async function completeJson(params: {
   const fallbackModel = config.model;
 
   const runWithModel = async (model: string) => {
-    return client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.2,
-      max_tokens: maxTokens,
-    });
+    const retryDelaysMs = [2000, 4000, 8000];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.2,
+          max_tokens: maxTokens,
+        });
+      } catch (e: any) {
+        const status = Number(e?.status ?? 0);
+        const canRetry = status === 500 && attempt < retryDelaysMs.length;
+        if (!canRetry) throw e;
+        const waitMs = retryDelaysMs[attempt];
+        console.warn(
+          `[retry ${attempt + 1}/3] 500 error, retrying in ${Math.round(waitMs / 1000)}s...`
+        );
+        await sleep(waitMs);
+      }
+    }
   };
 
   let resp;

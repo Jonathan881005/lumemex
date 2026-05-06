@@ -5,6 +5,7 @@ export default function HomePage() {
     <div style={{ display: 'grid', gap: 12 }}>
       <h1>lumemex</h1>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link href="/dashboard">Dashboard</Link>
         <Link href="/query">Query</Link>
         <Link href="/ingest">Ingest</Link>
         <Link href="/lint">Lint</Link>
@@ -12,7 +13,7 @@ export default function HomePage() {
         <Link href="/editor">Editor</Link>
         <Link href="/search">Search</Link>
       </div>
-      <p>Web UI skeleton for local testing.</p>
+      <p>Local knowledge base workbench.</p>
     </div>
   );
 }

@@ -5,5 +5,6 @@ export * from './pipeline/ingest';
 export * from './pipeline/query';
 export * from './pipeline/lint';
 export * from './storage/db';
+export * from './diagnostics/test-api-key';
 
 

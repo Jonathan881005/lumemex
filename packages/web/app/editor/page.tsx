@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 type PageListItem = {
   slug: string;
@@ -25,6 +26,8 @@ export default function EditorPage() {
   const [loadingList, setLoadingList] = useState(false);
   const [loadingPage, setLoadingPage] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
+  const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +44,14 @@ export default function EditorPage() {
     if (!selectedSlug) return;
     loadPage(selectedSlug);
   }, [selectedSlug]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!isDirty || saving || !detail || !selectedSlug) return;
+      void saveCurrent(true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [isDirty, saving, detail, selectedSlug, draft]);
 
   function showToast(message: string) {
     setToast(message);
@@ -81,7 +92,7 @@ export default function EditorPage() {
     }
   }
 
-  async function saveCurrent() {
+  async function saveCurrent(silent = false) {
     if (!detail || !selectedSlug) return;
     setSaving(true);
     setError(null);
@@ -97,14 +108,27 @@ export default function EditorPage() {
       setPages((prev) =>
         prev.map((p) => (p.slug === selectedSlug ? { ...p, updated_at: res.updated_at } : p))
       );
-      showToast('Saved successfully');
+      if (!silent) {
+        showToast('Saved successfully');
+      } else {
+        setLastAutosavedAt(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+      }
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       setError(msg);
-      showToast(`Save failed: ${msg}`);
+      if (!silent) showToast(`Save failed: ${msg}`);
     } finally {
       setSaving(false);
     }
+  }
+
+  function requestSelectSlug(nextSlug: string) {
+    if (nextSlug === selectedSlug) return;
+    if (isDirty) {
+      const ok = window.confirm('You have unsaved changes. Leave?');
+      if (!ok) return;
+    }
+    setSelectedSlug(nextSlug);
   }
 
   return (
@@ -145,7 +169,7 @@ export default function EditorPage() {
           {pages.map((p) => (
             <button
               key={p.slug}
-              onClick={() => setSelectedSlug(p.slug)}
+              onClick={() => requestSelectSlug(p.slug)}
               style={{
                 width: '100%',
                 textAlign: 'left',
@@ -186,25 +210,73 @@ export default function EditorPage() {
                     slug: {detail.slug} · type: {detail.category}
                   </div>
                 </div>
-                <button onClick={saveCurrent} disabled={saving || !isDirty}>
+                <button onClick={() => void saveCurrent(false)} disabled={saving || !isDirty}>
                   {saving ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
                 </button>
               </div>
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                spellCheck={false}
-                style={{
-                  width: '100%',
-                  minHeight: 580,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 8,
-                  padding: 10,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setActiveTab('edit')}
+                  style={{
+                    background: activeTab === 'edit' ? '#e2e8f0' : '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setActiveTab('preview')}
+                  style={{
+                    background: activeTab === 'preview' ? '#e2e8f0' : '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Preview
+                </button>
+              </div>
+              {activeTab === 'edit' ? (
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  spellCheck={false}
+                  style={{
+                    width: '100%',
+                    minHeight: 580,
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 8,
+                    padding: 10,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    minHeight: 580,
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 8,
+                    padding: 10,
+                    overflow: 'auto',
+                    background: '#fcfcfc',
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <ReactMarkdown>{draft}</ReactMarkdown>
+                </div>
+              )}
+              {(saving || lastAutosavedAt) && (
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  {saving ? 'Saving...' : `Last autosaved at ${lastAutosavedAt}`}
+                </div>
+              )}
             </>
           )}
         </section>

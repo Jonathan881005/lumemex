@@ -1,7 +1,9 @@
 {
   "api_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
   "api_key": "YOUR_API_KEY_HERE",
-  "model": "gemini-2.0-flash",
+  "ingest_model": "gemma-4-31b-it",
+  "query_model": "gemini-2.5-flash-lite",
+  "lint_model": "gemma-4-31b-it",
   "raw_dir": "./raw",
   "wiki_dir": "./wiki",
   "max_tokens_per_compilation": 8000

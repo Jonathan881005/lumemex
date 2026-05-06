@@ -24,12 +24,13 @@ async function main() {
   }
 
   if (cmd === 'ingest') {
-    const rawPath = args[0];
+    const force = args.includes('--force');
+    const rawPath = args.find((a) => !a.startsWith('--'));
     if (!rawPath) {
-      console.log('Usage: lumemex ingest <rawPathRelativeToRepo>');
+      console.log('Usage: lumemex ingest <rawPathRelativeToRepo> [--force]');
       process.exit(1);
     }
-    const result = await ingestOneRawPath(rawPath);
+    const result = await ingestOneRawPath(rawPath, { force });
     console.log(JSON.stringify(result, null, 2));
     return;
   }

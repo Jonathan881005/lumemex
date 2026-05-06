@@ -21,4 +21,5 @@ __exportStar(require("./pipeline/ingest"), exports);
 __exportStar(require("./pipeline/query"), exports);
 __exportStar(require("./pipeline/lint"), exports);
 __exportStar(require("./storage/db"), exports);
+__exportStar(require("./diagnostics/test-api-key"), exports);
 //# sourceMappingURL=index.js.map

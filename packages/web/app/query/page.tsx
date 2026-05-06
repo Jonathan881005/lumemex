@@ -8,6 +8,8 @@ export default function QueryPage() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [saveCandidate, setSaveCandidate] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testingKey, setTestingKey] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<any | null>(null);
 
   async function runQuery() {
     setLoading(true);
@@ -50,6 +52,28 @@ export default function QueryPage() {
     setError(`Saved: ${saved.path}`);
   }
 
+  async function runApiKeyTest() {
+    setTestingKey(true);
+    setApiTestResult(null);
+    try {
+      const resp = await fetch('/api/debug/test-key', { method: 'POST' });
+      const body = await resp.json().catch(() => ({}));
+      setApiTestResult({
+        ok: resp.ok,
+        statusCode: resp.status,
+        body,
+      });
+    } catch (e: any) {
+      setApiTestResult({
+        ok: false,
+        statusCode: 0,
+        body: { message: String(e?.message ?? e) },
+      });
+    } finally {
+      setTestingKey(false);
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>Query</h2>
@@ -82,6 +106,18 @@ export default function QueryPage() {
           </button>
         </div>
       )}
+
+      <div style={{ display: 'grid', gap: 8, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+        <h3 style={{ margin: 0 }}>API Key Diagnostic</h3>
+        <button onClick={runApiKeyTest} disabled={testingKey}>
+          {testingKey ? 'Testing API key...' : 'Test API Key'}
+        </button>
+        {apiTestResult && (
+          <pre style={{ whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 12, borderRadius: 8 }}>
+            {JSON.stringify(apiTestResult, null, 2)}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }
