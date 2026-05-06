@@ -1,0 +1,5 @@
+config.json
+raw/
+wiki/
+node_modules/
+.next/
