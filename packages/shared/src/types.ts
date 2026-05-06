@@ -88,6 +88,21 @@ export interface QueryResult {
   citations: Array<{ pageSlug: string; excerpt?: string }>;
   usedIndexFirst: boolean;
   usedWikiSlugs: string[];
+  saveCandidate?: {
+    should_save: boolean;
+    title: string;
+    slug: string;
+    category: 'query-answer';
+    markdown: string;
+    index_entry: {
+      slug: string;
+      category: 'query-answer';
+      title: string;
+      summary: string;
+      tags?: string[];
+      updated_at: string;
+    };
+  };
   savedAsWikiPage?: { slug: string; path: string };
   compilation: CompilationResult;
 }

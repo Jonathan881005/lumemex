@@ -1,5 +1,9 @@
 config.json
 raw/
 wiki/
+!wiki/
+!wiki/index.md
+!wiki/log.md
 node_modules/
 .next/
+data/*.db

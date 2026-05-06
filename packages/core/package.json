@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@lumemex/shared": "0.1.0",
-    "better-sqlite3": "^9.0.0",
+    "better-sqlite3": "^12.9.0",
     "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }

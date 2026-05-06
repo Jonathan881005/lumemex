@@ -9,10 +9,16 @@
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
-    "next": "15.0.0-canary",
+    "@lumemex/core": "0.1.0",
+    "@lumemex/shared": "0.1.0",
+    "d3": "^7.9.0",
+    "next": "latest",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "@lumemex/core": "0.1.0",
-    "@lumemex/shared": "0.1.0"
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/react": "19.2.14"
   }
 }

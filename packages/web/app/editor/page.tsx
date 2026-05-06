@@ -1,0 +1,215 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+
+type PageListItem = {
+  slug: string;
+  title: string;
+  category: string;
+  updated_at: string;
+};
+
+type PageDetail = {
+  slug: string;
+  title: string;
+  category: string;
+  content: string;
+  updated_at: string;
+};
+
+export default function EditorPage() {
+  const [pages, setPages] = useState<PageListItem[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [detail, setDetail] = useState<PageDetail | null>(null);
+  const [draft, setDraft] = useState('');
+  const [loadingList, setLoadingList] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const isDirty = useMemo(() => {
+    if (!detail) return false;
+    return draft !== detail.content;
+  }, [detail, draft]);
+
+  useEffect(() => {
+    loadPages();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSlug) return;
+    loadPage(selectedSlug);
+  }, [selectedSlug]);
+
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(null), 2200);
+  }
+
+  async function loadPages() {
+    setLoadingList(true);
+    setError(null);
+    try {
+      const resp = await fetch('/api/pages');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as { pages: PageListItem[] };
+      setPages(data.pages ?? []);
+      if (!selectedSlug && data.pages?.length) {
+        setSelectedSlug(data.pages[0].slug);
+      }
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoadingList(false);
+    }
+  }
+
+  async function loadPage(slug: string) {
+    setLoadingPage(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/pages/${encodeURIComponent(slug)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as PageDetail;
+      setDetail(data);
+      setDraft(data.content);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setLoadingPage(false);
+    }
+  }
+
+  async function saveCurrent() {
+    if (!detail || !selectedSlug) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/pages/${encodeURIComponent(selectedSlug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: draft }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const res = (await resp.json()) as { updated_at: string };
+      setDetail({ ...detail, content: draft, updated_at: res.updated_at });
+      setPages((prev) =>
+        prev.map((p) => (p.slug === selectedSlug ? { ...p, updated_at: res.updated_at } : p))
+      );
+      showToast('Saved successfully');
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      setError(msg);
+      showToast(`Save failed: ${msg}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <h2>Editor</h2>
+      {error && <pre style={{ color: 'crimson', margin: 0 }}>{error}</pre>}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 16,
+            top: 16,
+            background: '#0f766e',
+            color: 'white',
+            padding: '8px 10px',
+            borderRadius: 8,
+            zIndex: 20,
+            fontSize: 13,
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, minHeight: 720 }}>
+        <aside
+          style={{
+            width: '28%',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            overflow: 'auto',
+            background: '#fff',
+          }}
+        >
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>
+            Wiki Pages {loadingList ? '(loading...)' : `(${pages.length})`}
+          </div>
+          {pages.map((p) => (
+            <button
+              key={p.slug}
+              onClick={() => setSelectedSlug(p.slug)}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                border: 'none',
+                borderBottom: '1px solid #f1f5f9',
+                padding: '10px 12px',
+                background: selectedSlug === p.slug ? '#eef2ff' : 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{p.title}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                {p.slug} · {p.category}
+              </div>
+            </button>
+          ))}
+        </aside>
+
+        <section
+          style={{
+            width: '72%',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: 12,
+            background: '#fff',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          {!selectedSlug && <p style={{ color: '#64748b' }}>Select a wiki page to edit.</p>}
+          {loadingPage && <p>Loading page...</p>}
+          {detail && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{detail.title}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    slug: {detail.slug} · type: {detail.category}
+                  </div>
+                </div>
+                <button onClick={saveCurrent} disabled={saving || !isDirty}>
+                  {saving ? 'Saving...' : isDirty ? 'Save' : 'Saved'}
+                </button>
+              </div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                spellCheck={false}
+                style={{
+                  width: '100%',
+                  minHeight: 580,
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 8,
+                  padding: 10,
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                }}
+              />
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+

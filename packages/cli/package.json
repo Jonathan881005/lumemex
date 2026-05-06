@@ -8,6 +8,7 @@
   "types": "dist/bin.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/bin.js",
     "lint": "echo \"no lint yet\"",
     "test": "echo \"no tests yet\"",
     "dev": "ts-node src/bin.ts"
