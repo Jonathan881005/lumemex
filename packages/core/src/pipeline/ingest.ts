@@ -251,7 +251,7 @@ export async function ingestOneRawPath(
     tags: Array.isArray(indexEntry.tags) ? indexEntry.tags : undefined,
   };
 
-  await upsertWikiPageAndIndex({
+  const writtenPrimaryMarkdown = await upsertWikiPageAndIndex({
     db,
     wikiDir,
     slug: primarySlug,
@@ -260,11 +260,12 @@ export async function ingestOneRawPath(
     markdown: primaryMarkdown,
     summary: String(entryForIndex.summary ?? ''),
     tags: entryForIndex.tags,
+    rawPath: rawPathNormalized,
     nowIso,
     onCreated: (slug) => pagesCreated.push(slug),
     onUpdated: (slug) => pagesUpdated.push(slug),
   });
-  pageMarkdownBySlug.set(primarySlug, primaryMarkdown);
+  pageMarkdownBySlug.set(primarySlug, writtenPrimaryMarkdown);
   touchedWikiSlugs.push(primarySlug);
 
   // Apply secondary updates returned by the model.
@@ -279,7 +280,7 @@ export async function ingestOneRawPath(
     const titleForUpdate = String(u?.title ?? existingPage?.title ?? slug).trim();
     const categoryForUpdate = String(u?.category ?? existingPage?.category ?? 'concept') as WikiCategory;
 
-    await upsertWikiPageAndIndex({
+    const writtenUpdatedMarkdown = await upsertWikiPageAndIndex({
       db,
       wikiDir,
       slug,
@@ -288,12 +289,13 @@ export async function ingestOneRawPath(
       markdown,
       summary: String(u?.added_paragraph_summary ?? u?.reason ?? ''),
       tags: undefined,
+      rawPath: rawPathNormalized,
       nowIso,
       onCreated: (createdSlug) => pagesCreated.push(createdSlug),
       onUpdated: (updatedSlug) => pagesUpdated.push(updatedSlug),
     });
 
-    pageMarkdownBySlug.set(slug, markdown);
+    pageMarkdownBySlug.set(slug, writtenUpdatedMarkdown);
     touchedWikiSlugs.push(slug);
   }
 
@@ -377,14 +379,16 @@ async function upsertWikiPageAndIndex(params: {
   markdown: string;
   summary: string;
   tags?: string[];
+  rawPath: string;
   nowIso: string;
   onCreated: (slug: string) => void;
   onUpdated: (slug: string) => void;
-}): Promise<void> {
-  const { db, wikiDir, slug, title, category, markdown, summary, tags, nowIso, onCreated, onUpdated } = params;
+}): Promise<string> {
+  const { db, wikiDir, slug, title, category, markdown, summary, tags, rawPath, nowIso, onCreated, onUpdated } = params;
   const existing = db.prepare('SELECT id FROM wiki_pages WHERE slug = ?').get(slug) as { id: string } | undefined;
+  const normalizedMarkdown = enforceSchema(markdown, rawPath);
 
-  await writeWikiPageFile({ wikiDir, category, slug, markdown });
+  await writeWikiPageFile({ wikiDir, category, slug, markdown: normalizedMarkdown });
   await writeUpdatedIndexFile({
     wikiDir,
     entry: {
@@ -405,14 +409,14 @@ async function upsertWikiPageAndIndex(params: {
       wikiPagePath(wikiDir, category, slug).replaceAll('\\', '/'),
       category,
       summary,
-      sha256Hex(markdown),
+      sha256Hex(normalizedMarkdown),
       nowIso,
       'ingest',
-      markdown,
+      normalizedMarkdown,
       slug
     );
     onUpdated(slug);
-    return;
+    return normalizedMarkdown;
   }
 
   db.prepare(
@@ -424,13 +428,42 @@ async function upsertWikiPageAndIndex(params: {
     wikiPagePath(wikiDir, category, slug).replaceAll('\\', '/'),
     category,
     summary,
-    sha256Hex(markdown),
+    sha256Hex(normalizedMarkdown),
     nowIso,
     nowIso,
     'ingest',
-    markdown
+    normalizedMarkdown
   );
   onCreated(slug);
+  return normalizedMarkdown;
+}
+
+function enforceSchema(markdown: string, rawPath: string): string {
+  const sourceLine = `- \`${rawPath}\``;
+  const content = (markdown ?? '').trimEnd();
+  if (!content) return `## Sources\n${sourceLine}\n`;
+
+  if (!/^##\s+Sources\s*$/im.test(content)) {
+    return `${content}\n\n## Sources\n${sourceLine}\n`;
+  }
+
+  const lines = content.split(/\r?\n/);
+  const headingIdx = lines.findIndex((line) => /^##\s+Sources\s*$/i.test(line.trim()));
+  if (headingIdx < 0) return `${content}\n\n## Sources\n${sourceLine}\n`;
+
+  let nextHeadingIdx = lines.length;
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i].trim())) {
+      nextHeadingIdx = i;
+      break;
+    }
+  }
+
+  const sectionBody = lines.slice(headingIdx + 1, nextHeadingIdx).join('\n').trim();
+  if (!sectionBody) {
+    lines.splice(headingIdx + 1, 0, sourceLine);
+  }
+  return `${lines.join('\n').trimEnd()}\n`;
 }
 
 function validateIngestResult(params: {

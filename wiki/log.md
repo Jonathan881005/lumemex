@@ -133,3 +133,15 @@ This file is append-only. Each operation appends one section.
 - details: Identified critical missing concept pages for RAG, Knowledge Management, and Lint. Flagged [[Lumemex Upload Test]] as an orphan. Detected a persistent citation gap in [[LLM Wiki Pattern]] and weak bidirectional linking between the root concept and its core idea expansion.
 - pages_created: []
 - pages_updated: []
+
+## [2026-05-06] ingest | RAG vs Persistent Wiki Follow-up
+- model: gemini-2.0-flash
+- details: Refined the knowledge graph by creating a dedicated [[RAG]] concept page based on the follow-up notes, resolving previous lint findings regarding missing concept pages. Updated [[RAG vs Persistent Wiki]], [[Persistent Wiki]], and [[LLM Wiki Pattern]] to ensure bidirectional linking.
+- pages_created: [rag]
+- pages_updated: [rag-vs-persistent-wiki, persistent-wiki, llm-wiki-pattern]
+
+## [2026-05-06] lint | Wiki Health Audit
+- model: gemini-2.0-flash
+- details: Detected critical index mismatch (RAG missing from index.md). Identified missing concept pages for [[Knowledge Management]] and [[Lint]]. Flagged [[Lumemex Upload Test]] as an orphan. Noted persistent weak bidirectional linking between root pattern and core idea, and a recurring citation gap in [[LLM Wiki Pattern]].
+- pages_created: []
+- pages_updated: []

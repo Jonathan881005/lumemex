@@ -26,7 +26,7 @@ Rather than viewing these as mutually exclusive, the optimal workflow integrates
 ## Related Concepts
 - [[Knowledge Management]] (Missing page)
 - [[Persistent Wiki]]
-- [[RAG]] (Missing page)
+- [[RAG]]
 
 ## Sources
 - `raw/text/second-article.md` ("RAG vs Persistent Wiki Follow-up")

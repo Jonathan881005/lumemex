@@ -176,7 +176,7 @@ async function ingestOneRawPath(rawPathRelativeToRepo, options) {
         updatedAt: String(indexEntry.updated_at ?? indexEntry.updatedAt ?? updatedAt).slice(0, 10),
         tags: Array.isArray(indexEntry.tags) ? indexEntry.tags : undefined,
     };
-    await upsertWikiPageAndIndex({
+    const writtenPrimaryMarkdown = await upsertWikiPageAndIndex({
         db,
         wikiDir,
         slug: primarySlug,
@@ -185,11 +185,12 @@ async function ingestOneRawPath(rawPathRelativeToRepo, options) {
         markdown: primaryMarkdown,
         summary: String(entryForIndex.summary ?? ''),
         tags: entryForIndex.tags,
+        rawPath: rawPathNormalized,
         nowIso,
         onCreated: (slug) => pagesCreated.push(slug),
         onUpdated: (slug) => pagesUpdated.push(slug),
     });
-    pageMarkdownBySlug.set(primarySlug, primaryMarkdown);
+    pageMarkdownBySlug.set(primarySlug, writtenPrimaryMarkdown);
     touchedWikiSlugs.push(primarySlug);
     // Apply secondary updates returned by the model.
     for (const u of secondaryUpdates) {
@@ -202,7 +203,7 @@ async function ingestOneRawPath(rawPathRelativeToRepo, options) {
             .get(slug);
         const titleForUpdate = String(u?.title ?? existingPage?.title ?? slug).trim();
         const categoryForUpdate = String(u?.category ?? existingPage?.category ?? 'concept');
-        await upsertWikiPageAndIndex({
+        const writtenUpdatedMarkdown = await upsertWikiPageAndIndex({
             db,
             wikiDir,
             slug,
@@ -211,11 +212,12 @@ async function ingestOneRawPath(rawPathRelativeToRepo, options) {
             markdown,
             summary: String(u?.added_paragraph_summary ?? u?.reason ?? ''),
             tags: undefined,
+            rawPath: rawPathNormalized,
             nowIso,
             onCreated: (createdSlug) => pagesCreated.push(createdSlug),
             onUpdated: (updatedSlug) => pagesUpdated.push(updatedSlug),
         });
-        pageMarkdownBySlug.set(slug, markdown);
+        pageMarkdownBySlug.set(slug, writtenUpdatedMarkdown);
         touchedWikiSlugs.push(slug);
     }
     await (0, write_1.appendWikiLog)({ wikiDir, logEntryMarkdown: logEntry });
@@ -276,9 +278,10 @@ async function ingestOneRawPath(rawPathRelativeToRepo, options) {
     };
 }
 async function upsertWikiPageAndIndex(params) {
-    const { db, wikiDir, slug, title, category, markdown, summary, tags, nowIso, onCreated, onUpdated } = params;
+    const { db, wikiDir, slug, title, category, markdown, summary, tags, rawPath, nowIso, onCreated, onUpdated } = params;
     const existing = db.prepare('SELECT id FROM wiki_pages WHERE slug = ?').get(slug);
-    await (0, write_1.writeWikiPageFile)({ wikiDir, category, slug, markdown });
+    const normalizedMarkdown = enforceSchema(markdown, rawPath);
+    await (0, write_1.writeWikiPageFile)({ wikiDir, category, slug, markdown: normalizedMarkdown });
     await (0, index_update_1.writeUpdatedIndexFile)({
         wikiDir,
         entry: {
@@ -291,12 +294,38 @@ async function upsertWikiPageAndIndex(params) {
         },
     });
     if (existing) {
-        db.prepare('UPDATE wiki_pages SET title = ?, path = ?, category = ?, summary_line = ?, content_hash = ?, updated_at = ?, generated_by = ?, content = ? WHERE slug = ?').run(title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(markdown), nowIso, 'ingest', markdown, slug);
+        db.prepare('UPDATE wiki_pages SET title = ?, path = ?, category = ?, summary_line = ?, content_hash = ?, updated_at = ?, generated_by = ?, content = ? WHERE slug = ?').run(title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(normalizedMarkdown), nowIso, 'ingest', normalizedMarkdown, slug);
         onUpdated(slug);
-        return;
+        return normalizedMarkdown;
     }
-    db.prepare('INSERT INTO wiki_pages (id, slug, title, path, category, summary_line, content_hash, created_at, updated_at, generated_by, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(uuid(), slug, title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(markdown), nowIso, nowIso, 'ingest', markdown);
+    db.prepare('INSERT INTO wiki_pages (id, slug, title, path, category, summary_line, content_hash, created_at, updated_at, generated_by, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(uuid(), slug, title, (0, paths_1.wikiPagePath)(wikiDir, category, slug).replaceAll('\\', '/'), category, summary, (0, hash_1.sha256Hex)(normalizedMarkdown), nowIso, nowIso, 'ingest', normalizedMarkdown);
     onCreated(slug);
+    return normalizedMarkdown;
+}
+function enforceSchema(markdown, rawPath) {
+    const sourceLine = `- \`${rawPath}\``;
+    const content = (markdown ?? '').trimEnd();
+    if (!content)
+        return `## Sources\n${sourceLine}\n`;
+    if (!/^##\s+Sources\s*$/im.test(content)) {
+        return `${content}\n\n## Sources\n${sourceLine}\n`;
+    }
+    const lines = content.split(/\r?\n/);
+    const headingIdx = lines.findIndex((line) => /^##\s+Sources\s*$/i.test(line.trim()));
+    if (headingIdx < 0)
+        return `${content}\n\n## Sources\n${sourceLine}\n`;
+    let nextHeadingIdx = lines.length;
+    for (let i = headingIdx + 1; i < lines.length; i++) {
+        if (/^##\s+/.test(lines[i].trim())) {
+            nextHeadingIdx = i;
+            break;
+        }
+    }
+    const sectionBody = lines.slice(headingIdx + 1, nextHeadingIdx).join('\n').trim();
+    if (!sectionBody) {
+        lines.splice(headingIdx + 1, 0, sourceLine);
+    }
+    return `${lines.join('\n').trimEnd()}\n`;
 }
 function validateIngestResult(params) {
     const { rawBody, preExistingWikiText, pagesUpdated, pagesCreated, pageMarkdownBySlug, db } = params;
